@@ -5,7 +5,7 @@
 (define-gauche-package "Gauche-app-amazon-auth"
   ;; Repository URL, e.g. github
   ;;  This URL uniquely identifies the package.
-  :repository "http://example.com/Gauche-app-amazon-auth.git"
+  :repository "https://github.com/shirok/Gauche-app-amazon-auth.git"
 
   ;;
   :version "1.0"
