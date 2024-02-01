@@ -1,1 +1,1 @@
-* Implements Amazon AWS v4 Authentication
+# Implements Amazon AWS v4 Authentication

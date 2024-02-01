@@ -11,35 +11,44 @@
   (use rfc.uri)
   (use rfc.hmac)
   (use srfi.13)
+  (use srfi.19)
   (use srfi.197)                        ;chain
   (use util.digest)
-  (export aws4-signing-key aws4-auth-string))
+  (export aws4-signing-key aws4-add-auth-headers))
 (select-module app.amazon.auth)
 
 ;; API
-(define (aws4-signing-key access-id secret-key region service yyyymmdd)
+;;   Returns a closure to be used to generate authentication header.
+(define (aws4-signing-key access-id secret-key region service date)
   (define (sha-hash key msg)
     (hmac-message-to <u8vector> <sha256> key msg))
+  (define actual-date (or date (current-date 0)))
+  (define Ymd (date->string actual-date "~Y~m~d"))
+  (define scope
+    (format "~a/~a/~a/aws4_request" Ymd region service))
   (define signing-key
     (chain (string-append "AWS4" secret-key)
-           (sha-hash _ yyyymmdd)
+           (sha-hash _ Ymd)
            (sha-hash _ region)
            (sha-hash _ service)
            (sha-hash _ "aws4_request")))
-  (define scope
-    (format "~a/~a/~a/aws4_request" yyyymmdd region service))
   (^[msg]
     (case msg
       ((id) access-id)
       ((key) signing-key)
       ((scope) scope)
-      ((date) yyyymmdd)
+      ((date) (date->string actual-date "~5Z"))
       (else (error "aws4-signing-key: Unknown attribute:" msg)))))
 
 ;; API
-(define (aws4-auth-string signing-key method url headers body)
-  (let* ([canon-headers (canonical-headers url headers)]
-         [content-hash (compute-content-hash body)]
+;;  Returns rfc822 header list, with authorization and a few other
+;;  headers.
+(define (aws4-add-auth-headers signing-key method url headers body)
+  (let* ([content-hash (compute-content-hash body)]
+         [headers (chain headers
+                         (header-put _ "x-amz-date" (signing-key'date))
+                         (header-put _ "x-amz-content-sha256" content-hash))]
+         [canon-headers (canonical-headers url headers)]
          [request-to-sign (canonical-request method url canon-headers
                                              content-hash)]
          [string-to-sign (string-join
@@ -49,11 +58,12 @@
                                 (digest-message-to 'hex <sha256>
                                                    request-to-sign))
                           "\n")]
-         [sig (hmac-message-to 'hex <sha256> (signing-key 'key) string-to-sign)])
-    (format "AWS4-HMAC-SHA256 Credential=~a/~a, SignedHeaders=~a, Signature=~a"
-            (signing-key 'id) (signing-key 'scope)
-            (signed-headers-string canon-headers)
-            sig)))
+         [sig (hmac-message-to 'hex <sha256> (signing-key 'key) string-to-sign)]
+         [auth-string (format "AWS4-HMAC-SHA256 Credential=~a/~a, SignedHeaders=~a, Signature=~a"
+                              (signing-key 'id) (signing-key 'scope)
+                              (signed-headers-string canon-headers)
+                              sig)])
+    (header-put headers "authorization" auth-string)))
 
 (define (compute-content-hash body)
   (if (or (string? body) (u8vector? body))
@@ -111,3 +121,10 @@
                      (signed-headers-string canon-headers)
                      content-hash)
                "\n"))
+
+;; We can use rfc822-header-put after newer release of Gauche, but for now
+;; we roll our own.
+(define (header-put headers field-name value)
+  (let1 canon-name (string-downcase field-name)
+    (cons `(,canon-name ,value)
+          (alist-delete canon-name headers equal?))))
