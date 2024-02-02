@@ -19,10 +19,13 @@
 
 ;; API
 ;;   Returns a closure to be used to generate authentication header.
-(define (aws4-signing-key access-id secret-key
-                          :key (region "us-east-1")
+(define (aws4-signing-key :key (access-id #f)
+                               (secret-key #f)
+                               (region "us-east-1")
                                (service "s3")
                                (date #f))
+  (define real-access-id (or access-id (sys-getenv "AWS_ACCESS_KEY_ID")))
+  (define real-secret-key (or secret-key (sys-getenv "AWS_SECERT_ACCESS_KEY")))
   (define (sha-hash key msg)
     (hmac-message-to <u8vector> <sha256> key msg))
   (define actual-date (or date (current-date 0)))
@@ -30,14 +33,14 @@
   (define scope
     (format "~a/~a/~a/aws4_request" Ymd region service))
   (define signing-key
-    (chain (string-append "AWS4" secret-key)
+    (chain (string-append "AWS4" real-secret-key)
            (sha-hash _ Ymd)
            (sha-hash _ region)
            (sha-hash _ service)
            (sha-hash _ "aws4_request")))
   (^[msg]
     (case msg
-      ((id) access-id)
+      ((id) real-access-id)
       ((key) signing-key)
       ((scope) scope)
       ((date) (date->string actual-date "~Y~m~dT~H~M~SZ"))

@@ -21,7 +21,8 @@
          ("x-amz-date" "20240102T123456Z")
          ("date" "Tue Jan 02 2024 12:34:56 GMT"))
        (aws4-add-auth-headers
-        (aws4-signing-key *dummy-access-id* *dummy-secret-key*
+        (aws4-signing-key :access-id *dummy-access-id*
+                          :secret-key *dummy-secret-key*
                           :region "us-west-1"
                           :service "s3"
                           :date (make-date 0 56 34 12 2 1 2024 0))
