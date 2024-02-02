@@ -19,7 +19,10 @@
 
 ;; API
 ;;   Returns a closure to be used to generate authentication header.
-(define (aws4-signing-key access-id secret-key region service date)
+(define (aws4-signing-key access-id secret-key
+                          :key (region "us-east-1")
+                               (service "s3")
+                               (date #f))
   (define (sha-hash key msg)
     (hmac-message-to <u8vector> <sha256> key msg))
   (define actual-date (or date (current-date 0)))
@@ -37,7 +40,7 @@
       ((id) access-id)
       ((key) signing-key)
       ((scope) scope)
-      ((date) (date->string actual-date "~5Z"))
+      ((date) (date->string actual-date "~Y~m~dT~H~M~SZ"))
       (else (error "aws4-signing-key: Unknown attribute:" msg)))))
 
 ;; API
@@ -81,12 +84,11 @@
 (define (header-entry-normalize entry)
   (list (string-downcase (car entry))   ; lowercase header name
         (chain (string-trim-both (cadr entry))
-               (delete-neighbor-dups _))))
+               (regexp-replace-all #/\s+/ " " _))))
 
 (define (canonical-headers url headers
                            :optional (included '("host" "content-type" "date"
                                                  "x-amz-*")))
-  (define (thru x) (pprint x) x)
   (let1 headers-to-include (filter (header-matcher included) headers)
     (chain (if (rfc822-header-ref headers-to-include "host")
              headers-to-include
@@ -102,7 +104,7 @@
 (define (canonical-path path)
   (if path
     (chain (sys-normalize-pathname path :canonicalize #t)
-           (uri-encode-string _ :noescape #[[:alnum:]/~]))
+           (uri-encode-string _ :noescape #[[:alnum:]/-]))
     "/"))
 
 (define (canonical-query query-string)
