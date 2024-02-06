@@ -1,6 +1,6 @@
 # Implements Amazon AWS v4 Authentication
 
-# SYNOPSYS
+## SYNOPSYS
 
 ```
 (use app.amazon.auth)
@@ -18,5 +18,9 @@
   (http-get "your-service.amazon.com" "/resource-path"
             :secure #t
             :headers signed-headers))
-"
 ```
+
+## DESCPRIPTION
+
+This module provides basic methods to add authentication information
+to access AWS API.

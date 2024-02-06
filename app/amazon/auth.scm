@@ -51,9 +51,9 @@
 ;;  headers.
 (define (aws4-add-auth-headers signing-key method url headers body)
   (let* ([content-hash (compute-content-hash body)]
-         [headers (chain headers
-                         (header-put _ "x-amz-date" (signing-key'date))
-                         (header-put _ "x-amz-content-sha256" content-hash))]
+         [headers ($ chain headers
+                     (rfc822-header-put _ "x-amz-date" (signing-key'date))
+                     (rfc822-header-put _ "x-amz-content-sha256" content-hash))]
          [canon-headers (canonical-headers url headers)]
          [request-to-sign (canonical-request method url canon-headers
                                              content-hash)]
@@ -69,7 +69,7 @@
                               (signing-key 'id) (signing-key 'scope)
                               (signed-headers-string canon-headers)
                               sig)])
-    (header-put headers "authorization" auth-string)))
+    (rfc822-header-put headers "authorization" auth-string)))
 
 (define (compute-content-hash body)
   (if (or (string? body) (u8vector? body))
@@ -111,8 +111,21 @@
     "/"))
 
 (define (canonical-query query-string)
-  ;; WRITEME
-  (or query-string ""))
+  (define (enc s)
+    (uri-encode-string s :noescape #[[:alnum:]_.~-]))
+  (if query-string
+    (let1 sorted-params
+        (sort (map (^p (if (boolean? (cadr p))
+                         (list (car p) "")
+                         p))
+                   (uri-decompose-query query-string :separators #[&]))
+              (^[a b]
+                (or (string<? (car a) (car b))
+                    (and (string=? (car a) (car b))
+                         (string<? (cadr a) (cadr b))))))
+      (string-join (map (^p #"~(enc (car p))=~(enc (cadr p))") sorted-params)
+                   "&"))
+    ""))
 
 (define (concat-headers canon-headers)
   (string-concatenate
@@ -127,9 +140,21 @@
                      content-hash)
                "\n"))
 
-;; We can use rfc822-header-put after newer release of Gauche, but for now
-;; we roll our own.
-(define (header-put headers field-name value)
+;; TRANSIENT:
+;; The following procedures are not yet available in Gauche 0.9.14,
+;; so we provide them here.  Remove them after the new release of Gauche.
+
+(define (uri-decompose-query query-string :key (separators #[&\;]))
+  (map (^[elt] (let1 ss (string-split elt #\= 'infix 1)
+                 (list (uri-decode-string (car ss) :cgi-decode #t)
+                       (if (null? (cdr ss))
+                         #t
+                         (uri-decode-string (cadr ss) :cgi-decode #t)))))
+       (string-split query-string separators)))
+
+(define (rfc822-header-put headers field-name value)
+  (assume-type field-name <string>)
+  (assume-type value <string>)
   (let1 canon-name (string-downcase field-name)
     (cons `(,canon-name ,value)
           (alist-delete canon-name headers equal?))))
